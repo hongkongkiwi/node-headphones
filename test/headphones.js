@@ -1,6 +1,7 @@
 var headphones = require('../index');
 var chai = require('chai');
 var expect = chai.expect;
+require('dotenv').load();
 
 var options = {
   apiKey: "",
@@ -11,9 +12,14 @@ var hpApi = headphones(options);
 
 describe('Headphones', function() {
   describe('#index()', function () {
-    it('', function () {
-      assert.equal(-1, [1,2,3].indexOf(5));
-      assert.equal(-1, [1,2,3].indexOf(0));
+    it('should get index properly', function () {
+
+    });
+    it('should fail with an invalid api key', function () {
+
+    });
+    it('should fail with an invalid api base', function () {
+
     });
   });
 });
