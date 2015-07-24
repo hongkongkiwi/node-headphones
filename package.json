@@ -1,0 +1,14 @@
+{
+  "name": "headphones",
+  "version": "0.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Andy Savage <andy@savage.hk> (http://andy.savage.hk/)",
+  "license": "ISC",
+  "dependencies": {
+    "restler": "^3.3.0"
+  }
+}
