@@ -2,8 +2,8 @@ var request = require('request');
 var util = require('util');
 var logUrl = require('debug')('url');
 var log = require('debug')('log');
-var callLog = require('debug')('log');
-require('dotenv').load();
+var callLog = require('debug')('methods');
+require('dotenv').config({silent: true});
 
 module.exports = function(options) {
 
@@ -560,7 +560,9 @@ module.exports = function(options) {
     }
   }
 
-  headphones.setApiOptions(options);
+  if (options !== null) {
+    headphones.setApiOptions(options);
+  }
 
   return headphones;
 }
