@@ -1,19 +1,19 @@
-var request = require('request');
 var util = require('util');
-var logUrl = require('debug')('url');
-var log = require('debug')('log');
-var callLog = require('debug')('methods');
+var querystring = require('querystring');
+var coreUrl = require('url');
+var fs = require('fs');
+var request = require('request');
+var logUrl = require('debug')('headphones:api');
+var log = require('debug')('headphones:log');
+var callLog = require('debug')('headphones:methods');
 require('dotenv').config({silent: true});
 
 module.exports = function(options) {
 
   var apiKey = process.env['HEADPHONES_API_KEY'];
   var apiBase = process.env['HEADPHONES_API_BASE'];
+  var saveResponses = false;
 
-  /*//http://ip:port + HTTP_ROOT + /api?apikey=$apikey&cmd=$command
-  API methods
-
-  */
   /** Internal methods **/
   function _getApiUrl(cmd) {
     if (apiKey === undefined) {
@@ -23,7 +23,7 @@ module.exports = function(options) {
       throw Error('API Base is undefined');
     }
 
-    return util.format('%s/api?apiKey=$%s&cmd=$%s', apiBase, apiKey, cmd);
+    return util.format('%s/api?apikey=%s&cmd=%s', apiBase, apiKey, cmd);
   }
 
   function _isFunction(functionToCheck) {
@@ -33,11 +33,19 @@ module.exports = function(options) {
 
   function _request(url, callback) {
     logUrl(url);
-    request(url, function(error, body) {
+    request({
+      method: 'GET',
+      url: url,
+      json: true,
+    }, function(error, response, body) {
+      if (saveResponses && response.statusCode == 200) {
+        var query = querystring.parse(coreUrl.parse(url).query);
+        fs.writeFileSync(__dirname + '/test/replies/' + query.cmd + '.json', JSON.stringify(body));
+      }
       if (!error && response.statusCode == 200) {
         callback(null, body);
       } else {
-        callback(err, body);
+        callback(error, body);
       }
     });
   }
@@ -73,15 +81,17 @@ module.exports = function(options) {
     */
     setApiOptions: function(options) {
       callLog('setApiOptions(' + JSON.stringify(options) + ')');
-      apiKey = options['api_key'];
-      apiBase = options['api_base'];
-      request = options['request'] !== null ? options['request'] : request;
+      apiKey = options['api_key'] ? options['api_key'] : process.env['HEADPHONES_API_KEY'];
+      apiBase = options['api_base'] ? options['api_base'] : process.env['HEADPHONES_API_BASE'];
+      request = options['request'] !== null && typeof options['request'] !== 'undefined' ? options['request'] : request;
+      saveResponses = typeof options['saveResponses'] === 'boolean' ? options['saveResponses'] : false;
     },
 
     ping: function(callback) {
+      callLog('ping()');
       // TODO: IMPLEMENT ME
       // Should check if server is reachable at API url
-      callback(true);
+      callback(null, true);
     },
 
     /** Headphones API methods **/
@@ -107,14 +117,14 @@ module.exports = function(options) {
     },
 
     /*
-    getArtist&id=$artistid
+    getArtist&id=artistid
     Fetch artist data. returns the artist object (see above) and album info: Status, AlbumASIN, DateAdded,
     AlbumTitle, ArtistName, ReleaseDate, AlbumID, ArtistID, Type, ArtworkURL: hosted image path.
     For cached image, see getAlbumArt command)
     */
     getArtist: function(artistId, callback) {
       callLog('getArtist(' + artistId + ')');
-      _request(_getApiUrl('getArtist&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('getArtist&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -122,12 +132,12 @@ module.exports = function(options) {
     },
 
     /*
-    getAlbum&id=$albumid
+    getAlbum&id=albumid
     Fetch data from album page. Returns the album object, a description object and a tracks object. Tracks contain: AlbumASIN, AlbumTitle, TrackID, Format, TrackDuration (ms), ArtistName, TrackTitle, AlbumID, ArtistID, Location, TrackNumber, CleanName (stripped of punctuation /styling), BitRate)
     */
     getAlbum: function(albumId, callback) {
       callLog('getAlbum(' + albumId + ')');
-      _request(_getApiUrl('getAlbum&id=$' + albumId), function(error, body) {
+      _request(_getApiUrl('getAlbum&id=' + albumId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -153,7 +163,7 @@ module.exports = function(options) {
     */
     getWanted: function(callback) {
       callLog('getWanted()');
-      _request(_getApiUrl('getWanted' + albumId), function(error, body) {
+      _request(_getApiUrl('getWanted'), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -166,7 +176,7 @@ module.exports = function(options) {
     */
     getSimilar: function(callback) {
       callLog('getSimilar()');
-      _request(_getApiUrl('getSimilar' + albumId), function(error, body) {
+      _request(_getApiUrl('getSimilar'), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -179,7 +189,7 @@ module.exports = function(options) {
     */
     getHistory: function(callback) {
       callLog('getHistory()');
-      _request(_getApiUrl('getHistory' + albumId), function(error, body) {
+      _request(_getApiUrl('getHistory'), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -196,7 +206,7 @@ module.exports = function(options) {
     },
 
     /*
-    findArtist&name=$artistname[&limit=$limit]
+    findArtist&name=artistname[&limit=limit]
     Perform artist query on musicbrainz. Returns: url, score, name, uniquename (contains disambiguation info), id)
     */
     findArtist: function(artistName, limit, callback) {
@@ -204,7 +214,7 @@ module.exports = function(options) {
       if (!callback && _isFunction(limit)) {
         callback = limit;
       }
-      var url = limit ? util.format('%sfindArtist&name=$%s&limit=$%s', _getApiUrl(), artistName , limit) : _getApiUrl('findArtist&name=$') + artistName;
+      var url = limit ? util.format('%sfindArtist&name=%s&limit=%s', _getApiUrl(), artistName , limit) : _getApiUrl('findArtist&name=') + artistName;
       _request(url, function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
@@ -213,7 +223,7 @@ module.exports = function(options) {
     },
 
     /*
-    findAlbum&name=$albumname[&limit=$limit]
+    findAlbum&name=albumname[&limit=limit]
     Perform album query on musicbrainz. Returns: title, url (artist), id (artist), albumurl, albumid, score, uniquename (artist - with disambiguation)
     */
     findAlbum: function(albumName, limit, callback) {
@@ -221,7 +231,7 @@ module.exports = function(options) {
       if (!callback && _isFunction(limit)) {
         callback = limit;
       }
-      var url = limit ? util.format('%findAlbum&name=$%s&limit=$%s', _getApiUrl(), albumName, limit) : _getApiUrl('findAlbum&name=$') + albumName;
+      var url = limit ? util.format('%findAlbum&name=%s&limit=%s', _getApiUrl(), albumName, limit) : _getApiUrl('findAlbum&name=') + albumName;
       _request(url, function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
@@ -230,12 +240,12 @@ module.exports = function(options) {
     },
 
     /*
-    addArtist&id=$artistid
+    addArtist&id=artistid
     Add an artist to the db by artistid)
     */
     addArtist: function(artistId, callback) {
       callLog('addArtist(' + artistId + ')');
-      _request(_getApiUrl('addArtist&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('addArtist&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -243,13 +253,13 @@ module.exports = function(options) {
     },
 
     /*
-    addAlbum&id=$releaseid
+    addAlbum&id=releaseid
     Add an album to the db by album release id
     */
 
     addAlbum: function(releaeId, callback) {
       callLog('addAlbum(' + releaseId + ')');
-      _request(_getApiUrl('addAlbum&id=$' + releaeId), function(error, body) {
+      _request(_getApiUrl('addAlbum&id=' + releaeId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -257,12 +267,12 @@ module.exports = function(options) {
     },
 
     /*
-    delArtist&id=$artistid
+    delArtist&id=artistid
     Delete artist from db by artistid)
     */
     delArtist: function(artistId, callback) {
       callLog('delArtist(' + artistId + ')');
-      _request(_getApiUrl('delArtist&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('delArtist&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -270,12 +280,12 @@ module.exports = function(options) {
     },
 
     /*
-    pauseArtist&id=$artistid
+    pauseArtist&id=artistid
     Pause an artist in db)
     */
     pauseArtist: function(artistId, callback) {
       callLog('pauseArtist(' + artistId + ')');
-      _request(_getApiUrl('pauseArtist&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('pauseArtist&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -283,13 +293,12 @@ module.exports = function(options) {
     },
 
     /*
-    resumeArtist&id=$artistid
-
+    resumeArtist&id=artistid
     Resume an artist in db)
     */
     resumeArtist: function(artistId, callback) {
       callLog('resumeArtist(' + artistId + ')');
-      _request(_getApiUrl('resumeArtist&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('resumeArtist&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -297,12 +306,12 @@ module.exports = function(options) {
     },
 
     /*
-    refreshArtist&id=$artistid
+    refreshArtist&id=artistid
     Refresh info for artist in db from musicbrainz
     */
     refreshArtist: function(artistId, callback) {
       callLog('refreshArtist(' + artistId + ')');
-      _request(_getApiUrl('refreshArtist&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('refreshArtist&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -310,7 +319,7 @@ module.exports = function(options) {
     },
 
     /*
-    queueAlbum&id=$albumid[&new=True&lossless=True]
+    queueAlbum&id=albumid[&new=True&lossless=True]
     Mark an album as wanted and start the searcher. Optional paramters: 'new' looks for new versions, 'lossless' looks only for lossless versions
     */
     queueAlbum: function(albumId, isNew, lossless, callback) {
@@ -321,7 +330,7 @@ module.exports = function(options) {
         callback = lossless;
       }
 
-      var url = _getApiUrl('queueAlbum&name=$' + albumId);
+      var url = _getApiUrl('queueAlbum&name=' + albumId);
       if (typeof isNew === 'boolean') {
         url = isNew ? url + '&new=True' : url + '&new=False';
       }
@@ -337,12 +346,12 @@ module.exports = function(options) {
     },
 
     /*
-    unqueueAlbum&id=$albumid
+    unqueueAlbum&id=albumid
     Unmark album as wanted / i.e. mark as skipped
     */
     unqueueAlbum: function(albumId, callback) {
       callLog('unqueueAlbum(' + albumId + ')');
-      _request(_getApiUrl('unqueueAlbum&id=$' + albumId), function(error, body) {
+      _request(_getApiUrl('unqueueAlbum&id=' + albumId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -455,12 +464,12 @@ module.exports = function(options) {
     },
 
     /*
-    getArtistArt&id=$artistid
+    getArtistArt&id=artistid
     Returns either a relative path to the cached image, or a remote url if the image can't be saved to the cache dir
     */
     getArtistArt: function(artistId, callback) {
       callLog('getArtistArt(' + artistId + ')');
-      _request(_getApiUrl('getArtistArt&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('getArtistArt&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -468,12 +477,12 @@ module.exports = function(options) {
     },
 
     /*
-    EndPoint: getAlbumArt&id=$albumid
+    EndPoint: getAlbumArt&id=albumid
     Description: see above
     */
     getAlbumArt: function(albumId, callback) {
       callLog('getAlbumArt(' + albumId + ')');
-      _request(_getApiUrl('getAlbumArt&id=$' + albumId), function(error, body) {
+      _request(_getApiUrl('getAlbumArt&id=' + albumId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -481,12 +490,12 @@ module.exports = function(options) {
     },
 
     /*
-    getArtistInfo&id=$artistid
+    getArtistInfo&id=artistid
     Returns Summary and Content, both formatted in html.
     */
     getArtistInfo: function(artistId, callback) {
       callLog('getArtistInfo(' + artistId + ')');
-      _request(_getApiUrl('getArtistInfo&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('getArtistInfo&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -494,12 +503,12 @@ module.exports = function(options) {
     },
 
     /*
-    getAlbumInfo&id=$albumid
+    getAlbumInfo&id=albumid
     See above, returns Summary and Content.
     */
     getAlbumInfo: function(albumId, callback) {
       callLog('getAlbumInfo(' + albumId + ')');
-      _request(_getApiUrl('getAlbumInfo&id=$' + albumId), function(error, body) {
+      _request(_getApiUrl('getAlbumInfo&id=' + albumId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -507,12 +516,12 @@ module.exports = function(options) {
     },
 
     /*
-    getArtistThumb&id=$artistid
+    getArtistThumb&id=artistid
     Returns either a relative path to the cached thumbnail artist image, or an http:// address if the cache dir can't be written to.
     */
     getArtistThumb: function(artistId, callback) {
       callLog('getArtistThumb(' + artistId + ')');
-      _request(_getApiUrl('getArtistThumb&id=$' + artistId), function(error, body) {
+      _request(_getApiUrl('getArtistThumb&id=' + artistId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -520,12 +529,12 @@ module.exports = function(options) {
     },
 
     /*
-    getAlbumThumb&id=$albumid
+    getAlbumThumb&id=albumid
     See above.
     */
     getAlbumThumb: function(albumId, callback) {
       callLog('getAlbumThumb(' + albumId + ')');
-      _request(_getApiUrl('getAlbumThumb&id=$' + albumId), function(error, body) {
+      _request(_getApiUrl('getAlbumThumb&id=' + albumId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -533,12 +542,12 @@ module.exports = function(options) {
     },
 
     /*
-    choose_specific_download&id=$albumid
+    choose_specific_download&id=albumid
     Gives you a list of results from searcher.searchforalbum(). Basically runs a normal search, but rather than sorting them and downloading the best result, it dumps the data, which you can then pass on to download_specific_release(). Returns a list of dictionaries with params: title, size, url, provider & kind - all of these values must be passed back to download_specific_release
     */
     chooseSpecificDownload: function(albumId, callback) {
       callLog('chooseSpecificDownload(' + albumId + ')');
-      _request(_getApiUrl('choose_specific_download&id=$' + albumId), function(error, body) {
+      _request(_getApiUrl('choose_specific_download&id=' + albumId), function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
         }
@@ -546,12 +555,12 @@ module.exports = function(options) {
     },
 
     /*
-    download_specific_release&id=albumid&title=$title&size=$size&url=$url&provider=$provider&kind=$kind
+    download_specific_release&id=albumid&title=title&size=size&url=url&provider=provider&kind=kind
     Allows you to manually pass a choose_specific_download release back to searcher.send_to_downloader()
     */
     downloadSpecificRelease: function(albumId, title, size, url, provider, kind, callback) {
       callLog('downloadSpecificRelease(' + albumId + ',' + title + ',' + size + ',' + url + ',' + provider + ',' + kind + ')');
-      var url = util.format('%s&id=%s&title=$%s&size=$%s&url=$%s&provider=$%s&kind=$%s', _getApiUrl('download_specific_release'), albumId, title, size, url, provider, kind);
+      var url = util.format('%s&id=%s&title=%s&size=%s&url=%s&provider=%s&kind=%s', _getApiUrl('download_specific_release'), albumId, title, size, url, provider, kind);
       _request(url, function(error, body) {
         if (callback && _isFunction(callback)) {
           callback(error, body);
@@ -560,7 +569,7 @@ module.exports = function(options) {
     }
   }
 
-  if (options !== null) {
+  if (options !== null && typeof options !== 'undefined') {
     headphones.setApiOptions(options);
   }
 
